@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>SmartAttend-KSU</title>
+<style nonce="__NONCE__">
+:root{--bg:#f4f6f5;--card:#fff;--text:#1c2321;--line:#d7dedb;--head:#e8eeeb;--g:#0b5d3b;--muted:#5d6b66;--bad:#b3261e;--ok:#1b7a3a;--warn:#9a5b00}
+@media (prefers-color-scheme:dark){:root{--bg:#101513;--card:#18201c;--text:#e6ece9;--line:#2b3832;--head:#1f2a25;--g:#2e9b6a;--muted:#9fb0a8;--bad:#ff8a80;--ok:#6fdc97;--warn:#ffcc66}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.45}
+header{background:var(--g);color:#fff;padding:.6rem 1rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem}
+header h1{font-size:1.15rem;margin:0}header small{opacity:.8;font-weight:400}
+main{max-width:1100px;margin:1rem auto;padding:0 1rem}
+h2{margin:.4rem 0 .6rem}h3{margin:1rem 0 .4rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1rem;margin:.8rem 0}
+.narrow{max-width:380px;margin:3rem auto}
+.hidden{display:none!important}
+label{display:block;margin:.5rem 0;font-size:.9rem}
+label.inline{display:flex;gap:.5rem;align-items:center}
+input,select{width:100%;padding:.5rem;border:1px solid var(--line);border-radius:6px;font:inherit;background:var(--card);color:var(--text)}
+input[type=checkbox]{width:auto}
+button{background:var(--g);color:#fff;border:0;border-radius:6px;padding:.5rem .9rem;font:inherit;cursor:pointer;margin:.2rem .2rem .2rem 0}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.secondary{background:#5d6b66}button.danger{background:var(--bad);color:#fff}
+:focus-visible{outline:3px solid #f2b705;outline-offset:2px}
+nav{display:flex;flex-wrap:wrap;gap:.3rem;border-bottom:2px solid var(--line)}
+nav button{background:transparent;color:var(--text);border-radius:6px 6px 0 0;margin:0}
+nav button.active{background:var(--g);color:#fff}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th,td{border:1px solid var(--line);padding:.4rem .6rem;text-align:left;white-space:nowrap}
+th{background:var(--head)}tbody tr:nth-child(even){background:rgba(127,127,127,.06)}
+.msg{margin:.5rem 0;min-height:1.2rem;font-weight:600}.msg.ok{color:var(--ok)}.msg.err{color:var(--bad)}
+.muted{color:var(--muted);font-size:.9rem}
+.pill{display:inline-block;padding:.05rem .5rem;border-radius:999px;border:1px solid currentColor;font-size:.8rem;font-weight:600}
+.pill.present,.pill.manual{color:var(--ok)}.pill.late{color:var(--warn)}.pill.flagged{color:var(--bad)}.pill.rejected{color:var(--muted)}
+video{width:320px;max-width:100%;background:#000;border-radius:8px;display:block}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:1rem;z-index:10}
+.modal .card{max-width:520px}
+.row{display:flex;gap:.5rem;flex-wrap:wrap}
+form.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.5rem;align-items:end}
+.toast{position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:.6rem 1rem;border-radius:8px;z-index:20;max-width:90vw}
+.toast.err{background:var(--bad);color:#fff}
+@media (max-width:600px){th,td{white-space:normal}}
+</style>
+</head>
+<body>
+<header>
+  <h1>SmartAttend-KSU <small>Kisii University</small></h1>
+  <div><span id="who"></span> <button id="logout" class="hidden secondary">Log out</button></div>
+</header>
+
+<main>
+  <section id="login-view" class="card narrow">
+    <h2>Sign in</h2>
+    <form id="login-form">
+      <label>Username / Registration no.<input name="username" autocomplete="username" required></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+      <button>Sign in</button>
+      <div id="login-msg" class="msg" aria-live="polite"></div>
+    </form>
+  </section>
+  <section id="app-view" class="hidden">
+    <nav id="tabs" aria-label="Sections"></nav>
+    <div id="panel"></div>
+  </section>
+</main>
+
+<div id="consent" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="c-title">
+  <div class="card">
+    <h2 id="c-title">Consent for biometric enrolment</h2>
+    <p>SmartAttend-KSU will create a <b>numeric face template</b> to verify that you attend lectures in person.</p>
+    <ul>
+      <li>No photos or video are stored; camera frames are processed in memory and discarded.</li>
+      <li>The template is encrypted and used only for attendance verification.</li>
+      <li>It is deleted when you withdraw consent, on request, or when you graduate.</li>
+      <li>Refusing has no academic penalty: your lecturer will verify you manually.</li>
+    </ul>
+    <label class="inline"><input type="checkbox" id="c-ok"> I have read the privacy notice and I consent.</label>
+    <div class="row"><button id="c-yes" disabled>Agree and continue</button><button id="c-no" class="secondary">Cancel</button></div>
+  </div>
+</div>
+<div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+<script nonce="__NONCE__">
+"use strict";
+/* ============ helpers ============ */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const REASONS = {
+  invalid_credentials: "Wrong username or password.", locked_try_later: "Too many attempts. Try again in 5 minutes.",
+  unknown_card: "Card not recognised.", no_card: "Tap a card first.",
+  face_mismatch: "Face does not match the card holder (logged).", liveness_failed: "Liveness check failed: photo/replay suspected (logged).",
+  face_not_enrolled: "This student has no face enrolled.", face_not_recognised: "Face not recognised in this class.",
+  no_face: "No single face detected.", bad_image: "Camera image could not be read.",
+  already_checked_in: "Already checked in for this session.", not_registered_for_unit: "Student is not registered for this unit.",
+  session_closed: "Session is closed.", session_already_open: "A session is already open for this slot.",
+  outside_timetable_slot: "Outside the timetable slot.", consent_required: "Consent is required.",
+  face_already_enrolled: "This face is already enrolled for another student.", reason_required: "A reason (5+ characters) is required.",
+  decision_and_reason_required: "Decision and a reason (5+ characters) are required.",
+  forbidden: "You are not allowed to do that.", network_error: "Cannot reach the server. Check the connection.",
+  in_use_cannot_delete: "Record is in use and cannot be deleted.",
+};
+const why = e => REASONS[e.message] || e.message;
+let cfg = {}, me = null, cur = 0, timer = null, stream = null, busy = false, toastT = null;
+
+async function api(path, o = {}) {
+  let r;
+  try {
+    r = await fetch("/api" + path, {
+      method: o.method || "GET", credentials: "same-origin",
+      headers: { "Content-Type": "application/json" }, body: o.body ? JSON.stringify(o.body) : undefined,
+    });
+  } catch { throw new Error("network_error"); }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    if (r.status === 401 && !["/login", "/me"].includes(path)) location.reload();   // session expired
+    const e = new Error(data.error || r.statusText); e.status = r.status; throw e;
+  }
+  return data;
+}
+const msg = (el, t, ok) => { if (el) { el.textContent = t; el.className = "msg " + (ok ? "ok" : "err"); } };
+function toast(text, ok = true) {
+  const t = $("#toast"); t.textContent = text; t.className = "toast" + (ok ? "" : " err");
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.add("hidden"), 3500);
+}
+const fmtT = v => (v ? new Date(v).toLocaleString() : "");
+const badge = s => ({ h: s ? `<span class="pill ${esc(s)}">${esc(s)}</span>` : "" });
+const needFace = () => cfg.required_methods.includes("face");
+const needCard = () => cfg.required_methods.includes("rfid");
+const sim = () => cfg.face_backend === "simulated";
+const deviceId = () => { let d = localStorage.getItem("sa_device"); if (!d) { d = "dev-" + Math.random().toString(36).slice(2, 10); localStorage.setItem("sa_device", d); } return d; };
+const field = (n, label, req = true) => `<label>${label}<input name="${n}" ${req ? "required" : ""}></label>`;
+
+/* A column is [key, label, formatter?]. A formatter may return {h: "<html>"} to render trusted markup. */
+function table(cols, rows, act) {
+  if (!rows.length) return "<p class='muted'>No records.</p>";
+  const cell = (c, r) => { const v = c[2] ? c[2](r[c[0]], r) : r[c[0]]; return v && v.h !== undefined ? v.h : esc(v); };
+  const head = cols.map(c => `<th>${esc(c[1])}</th>`).join("") + (act ? "<th></th>" : "");
+  const body = rows.map(r => "<tr>" + cols.map(c => `<td>${cell(c, r)}</td>`).join("") + (act ? `<td>${act(r)}</td>` : "") + "</tr>").join("");
+  return `<div class="scroll"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+/* ============ camera + consent (frames stay in memory, are sent once, then discarded) ============ */
+async function startCam() {
+  const v = $("#cam"); if (!v) return;
+  try { stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } }); v.srcObject = stream; await v.play(); }
+  catch { msg($("#res") || $("#out"), "Camera unavailable (needs localhost/HTTPS and permission).", false); }
+}
+function stopCam() { if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; }
+async function burst(n = 8, gap = 300) {
+  const v = $("#cam"); if (!v || !stream) throw new Error("no_face");
+  const c = document.createElement("canvas"); c.width = 320; c.height = 240;
+  const g = c.getContext("2d"), out = [];
+  for (let i = 0; i < n; i++) { g.drawImage(v, 0, 0, 320, 240); out.push(c.toDataURL("image/jpeg", 0.7)); await new Promise(r => setTimeout(r, gap)); }
+  return out;
+}
+const camBlock = () => sim()
+  ? `<label>Simulated face ID (demo: the student's reg. no.)<input id="simid" autocomplete="off"></label><label class="inline"><input type="checkbox" id="simlive" checked> liveness passed</label>`
+  : `<video id="cam" playsinline muted></video><p class="muted">Ask the student to look at the camera and blink or turn their head slowly.</p>`;
+async function facePayload() {
+  if (sim()) return { sim_face_id: $("#simid").value.trim(), sim_live: $("#simlive").checked };
+  return { frames: await burst() };
+}
+function askConsent() {
+  return new Promise(res => {
+    const m = $("#consent"), chk = $("#c-ok"), yes = $("#c-yes"), no = $("#c-no");
+    chk.checked = false; yes.disabled = true; m.classList.remove("hidden"); chk.focus();
+    chk.onchange = () => { yes.disabled = !chk.checked; };
+    const done = v => { m.classList.add("hidden"); res(v); };
+    yes.onclick = () => done(true); no.onclick = () => done(false);
+  });
+}
+
+/* ============ admin panels ============ */
+async function pGeneric(t, fields) {
+  const { rows } = await api("/admin/" + t);
+  $("#panel").innerHTML = `<h2>${esc(t)}</h2><form class="grid" data-post="/admin/${t}">${fields.map(f => field(f, f)).join("")}<button>Add</button></form><div id="out" class="msg" aria-live="polite"></div>` +
+    table([["id", "id"], ...fields.map(f => [f, f])], rows, r => `<button class="danger" data-act="del" data-path="/admin/${t}/${r.id}">Delete</button>`);
+}
+async function pStudents() {
+  const { rows } = await api("/students");
+  $("#panel").innerHTML = `<h2>Students</h2><form class="grid" data-post="/students">${field("reg_no", "Reg. no")}${field("full_name", "Full name")}${field("programme", "Programme", false)}${field("year", "Year", false)}${field("rfid_uid", "Card UID", false)}<button>Add student</button></form><div id="out" class="msg" aria-live="polite"></div>` +
+    table([["reg_no", "Reg no"], ["full_name", "Name"], ["programme", "Programme"], ["year", "Year"], ["rfid_uid", "Card"], ["face_enrolled", "Face", v => (v ? "✔" : "—")], ["status", "Status"]], rows,
+      r => r.status === "active" ? `<button class="secondary" data-act="retire" data-path="/admin/students/${r.id}/graduate">Graduate</button><button class="danger" data-act="retire" data-path="/admin/students/${r.id}/erase">Erase</button>` : "");
+}
+async function pLecturers() {
+  const { rows } = await api("/lecturers");
+  $("#panel").innerHTML = `<h2>Lecturers</h2><form class="grid" data-post="/lecturers">${field("staff_no", "Staff no")}${field("full_name", "Full name")}${field("email", "Email", false)}<button>Add lecturer</button></form><div id="out" class="msg" aria-live="polite"></div>` +
+    table([["staff_no", "Staff no"], ["full_name", "Name"], ["email", "Email"]], rows);
+}
+async function pEnrol() {
+  const { rows } = await api("/admin/enrollments");
+  $("#panel").innerHTML = `<h2>Unit enrolments</h2><form class="grid" data-post="/admin/enrollments">${field("reg_no", "Reg. no")}${field("unit_code", "Unit code (e.g. BIT 3101)")}<button>Enrol</button></form><div id="out" class="msg" aria-live="polite"></div>` +
+    table([["unit_code", "Unit"], ["reg_no", "Reg no"], ["full_name", "Name"]], rows, r => `<button class="danger" data-act="del" data-path="/admin/enrollments/${r.student_id}/${r.unit_id}">Remove</button>`);
+}
+async function pAudit() {
+  const { rows } = await api("/audit");
+  $("#panel").innerHTML = `<h2>Audit log</h2><button data-act="retention">Run retention job</button><div id="out" class="msg" aria-live="polite"></div>` +
+    table([["ts", "Time", fmtT], ["actor", "Actor"], ["role", "Role"], ["action", "Action"], ["detail", "Detail"], ["ip", "IP"]], rows);
+}
+
+/* ============ shared panels ============ */
+async function pFace() {
+  const { rows } = await api("/students");
+  $("#panel").innerHTML = `<h2>Biometric enrolment</h2><p class="muted">Consent is required before any face data is captured. Only an encrypted numeric template is stored, never a photo.</p>
+    <label>Student<select id="st">${rows.filter(r => r.status === "active").map(r => `<option value="${r.id}">${esc(r.reg_no)} – ${esc(r.full_name)}${r.face_enrolled ? " ✔" : ""}</option>`).join("")}</select></label>
+    ${camBlock()}<button id="enrol">Show consent and enrol</button><div id="res" class="msg" aria-live="polite"></div>`;
+  if (!sim()) startCam();
+  $("#enrol").onclick = async () => {
+    if (busy) return;
+    if (!(await askConsent())) return msg($("#res"), "Consent declined: nothing was captured.", false);
+    busy = true; $("#enrol").disabled = true;
+    try { await api(`/students/${$("#st").value}/face`, { method: "POST", body: { consent: true, ...(await facePayload()) } }); msg($("#res"), "Face template enrolled.", true); }
+    catch (e) { msg($("#res"), "✖ " + why(e), false); }
+    finally { busy = false; $("#enrol").disabled = false; }
+  };
+}
+async function pReports() {
+  const { units } = await api("/reports/units");
+  $("#panel").innerHTML = `<h2>Reports</h2><label>Unit<select id="ru">${units.map(u => `<option value="${u.id}">${esc(u.code)} – ${esc(u.title)}</option>`).join("")}</select></label>
+    <div id="ru-out"></div><h3>Students below ${esc(cfg.threshold)}%</h3><div id="below"></div><h3>Suspicious activity</h3><div id="susp"></div>`;
+  const cols = [["reg_no", "Reg no"], ["full_name", "Name"], ["attended", "Attended"], ["sessions", "Sessions"], ["percent", "%"], ["below_threshold", "", v => (v ? "⚠ below threshold" : "")]];
+  const load = async () => {
+    const id = $("#ru").value; if (!id) return;
+    const { rows } = await api("/reports/unit/" + id);
+    $("#ru-out").innerHTML = `<p><a href="/api/reports/unit/${id}/export?format=csv">Export CSV</a> · <a href="/api/reports/unit/${id}/export?format=pdf">Export PDF</a></p>` + table(cols, rows);
+  };
+  $("#ru").onchange = load; await load();
+  $("#below").innerHTML = table([["unit_code", "Unit"], ["reg_no", "Reg no"], ["full_name", "Name"], ["percent", "%"]], (await api("/reports/below-threshold")).rows);
+  const s = await api("/reports/suspicious");
+  $("#susp").innerHTML = `<p class="muted">${Object.entries(s.summary).map(([k, v]) => `${esc(k)}: ${v}`).join(" · ") || "No events."}</p>` +
+    table([["created_at", "Time", fmtT], ["kind", "Kind"], ["reg_no", "Student"], ["unit_code", "Unit"], ["device_id", "Device"], ["detail", "Detail"]], s.events);
+}
+
+/* ============ lecturer: session, kiosk, live view ============ */
+async function refreshLive(sid) {
+  const box = $("#live"); if (!box) return;
+  const d = await api(`/sessions/${sid}/live`);
+  box.innerHTML = `<h3>Live attendance: ${d.present} / ${d.registered} present</h3>` +
+    table([["reg_no", "Reg no"], ["full_name", "Name"], ["checked_at", "Time", fmtT], ["status", "Status", badge], ["method", "Method"], ["flags", "Flags"], ["reason", "Reason"]], d.rows,
+      r => r.status === "flagged" ? `<button data-act="review" data-decision="approve" data-id="${r.id}" data-sid="${sid}">Approve</button><button class="danger" data-act="review" data-decision="reject" data-id="${r.id}" data-sid="${sid}">Reject</button>` : "");
+}
+async function doCheckin(sid) {
+  if (busy) return;                                   // prevents double taps / double submits
+  busy = true; const go = $("#go"), res = $("#res"); go.disabled = true;
+  const body = { device_id: deviceId() };
+  if (needCard()) body.rfid_uid = $("#uid").value.trim();
+  try {
+    if (needFace()) { msg(res, "Verifying…", true); Object.assign(body, await facePayload()); }
+    const r = await api(`/sessions/${sid}/checkin`, { method: "POST", body });
+    msg(res, `✔ ${r.student.full_name} (${r.student.reg_no}): ${r.status}${r.flags.length ? "  ⚠ " + r.flags.join(", ") : ""}`, true);
+  } catch (e) { msg(res, "✖ " + why(e), false); }
+  finally { busy = false; go.disabled = false; }
+  if (needCard()) { $("#uid").value = ""; $("#uid").focus(); }
+  refreshLive(sid).catch(() => {});
+}
+async function pSession() {
+  const [{ slots }, { sessions }] = await Promise.all([api("/lecturer/slots"), api("/sessions")]);
+  const open = sessions.find(s => s.status === "open");
+  let h = `<h2>Class session</h2><div id="out" class="msg" aria-live="polite"></div>`;
+  if (!open) {
+    h += `<form data-post="/sessions" class="card"><label>Timetable slot<select name="timetable_id">${slots.map(s => `<option value="${s.id}">${DAYS[s.day_of_week]} ${esc(s.start_time)}–${esc(s.end_time)} · ${esc(s.code)} @ ${esc(s.venue)}</option>`).join("")}</select></label><button>Start session</button></form>`;
+  } else {
+    h += `<div class="card"><b>${esc(open.unit_code)}</b> @ ${esc(open.venue)}, open since ${new Date(open.opened_at).toLocaleTimeString()} <button class="danger" data-act="stop" data-id="${open.id}">Stop session</button></div>
+      <div class="card"><h3>Check-in reader</h3>
+        ${needCard() ? `<label>Card UID (tap card; USB readers type it and press Enter)<input id="uid" autocomplete="off"></label>` : ""}
+        ${needFace() ? camBlock() : ""}<button id="go">Verify and check in</button><div id="res" class="msg" aria-live="polite"></div></div>
+      <div class="card"><h3>Manual fallback (audited)</h3><form class="grid" data-post="/sessions/${open.id}/manual">${field("reg_no", "Reg. no")}${field("reason", "Reason (required)")}<button class="secondary">Mark present</button></form></div>
+      <div id="live"></div>`;
+  }
+  h += `<h3>Recent sessions</h3>` + table([["id", "#"], ["unit_code", "Unit"], ["venue", "Venue"], ["opened_at", "Opened", fmtT], ["status", "Status"], ["present", "Present"]], sessions,
+    s => `<a href="/api/sessions/${s.id}/export?format=csv">CSV</a> · <a href="/api/sessions/${s.id}/export?format=pdf">PDF</a>`);
+  $("#panel").innerHTML = h;
+  if (open) {
+    if (needFace() && !sim()) startCam();
+    $("#go").onclick = () => doCheckin(open.id);
+    if (needCard()) { $("#uid").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); doCheckin(open.id); } }); $("#uid").focus(); }
+    await refreshLive(open.id);
+    timer = setInterval(() => { if (!document.hidden) refreshLive(open.id).catch(() => {}); }, 3000);
+  }
+}
+
+/* ============ student ============ */
+async function pMine() {
+  const { units, threshold } = await api("/me/attendance");
+  $("#panel").innerHTML = `<h2>My attendance</h2>` +
+    table([["code", "Unit"], ["title", "Title"], ["attended", "Attended"], ["sessions", "Sessions"], ["percent", "%"], ["below_threshold", "", v => (v ? `⚠ below ${threshold}%` : "")]], units) +
+    `<h3>My data</h3><p class="muted">You can withdraw consent and delete your face template at any time.</p><button class="danger" data-act="wipe">Withdraw consent and delete my face template</button><div id="out" class="msg" aria-live="polite"></div>`;
+}
+
+/* ============ routing, actions, forms ============ */
+const TABS = {
+  admin: [["Students", pStudents], ["Lecturers", pLecturers], ["Units", () => pGeneric("units", ["code", "title", "lecturer_id"])], ["Venues", () => pGeneric("venues", ["name", "capacity"])],
+    ["Timetable", () => pGeneric("timetable", ["unit_id", "venue_id", "day_of_week", "start_time", "end_time"])], ["Enrolments", pEnrol], ["Enrol face", pFace], ["Reports", pReports], ["Audit", pAudit]],
+  lecturer: [["Class session", pSession], ["Enrol face", pFace], ["Reports", pReports]],
+  student: [["My attendance", pMine]],
+};
+const ACTIONS = {
+  async del(b) { if (!confirm("Delete this record?")) return; try { await api(b.dataset.path, { method: "DELETE" }); await showTab(cur); } catch (e) { toast(why(e), false); } },
+  async retire(b) { if (!confirm("This deletes biometrics and deactivates the student. Continue?")) return; try { await api(b.dataset.path, { method: "POST" }); await showTab(cur); } catch (e) { toast(why(e), false); } },
+  async stop(b) { try { await api(`/sessions/${b.dataset.id}/stop`, { method: "POST" }); await showTab(cur); } catch (e) { toast(why(e), false); } },
+  async review(b) {
+    const reason = prompt("Reason for this decision (required, 5+ characters):"); if (!reason) return;
+    try { await api(`/attendance/${b.dataset.id}/review`, { method: "POST", body: { decision: b.dataset.decision, reason } }); toast("Decision saved."); await refreshLive(+b.dataset.sid); }
+    catch (e) { toast(why(e), false); }
+  },
+  async retention() { try { const r = await api("/admin/retention/run", { method: "POST" }); msg($("#out"), `Biometrics wiped: ${r.biometrics_wiped}; old events deleted: ${r.events_deleted}`, true); } catch (e) { toast(why(e), false); } },
+  async wipe() { if (!confirm("Delete your face template?")) return; try { await api("/me/biometrics", { method: "DELETE" }); msg($("#out"), "Your face template was deleted.", true); } catch (e) { toast(why(e), false); } },
+};
+
+async function showTab(i) {
+  cur = i; clearInterval(timer); stopCam();
+  [...$("#tabs").children].forEach((b, j) => { b.classList.toggle("active", i === j); b.setAttribute("aria-current", i === j ? "page" : "false"); });
+  try { await TABS[me.role][i][1](); }
+  catch (e) { $("#panel").innerHTML = `<p class="msg err">${esc(why(e))}</p>`; }
+}
+function enter() {
+  $("#login-view").classList.add("hidden"); $("#app-view").classList.remove("hidden"); $("#logout").classList.remove("hidden");
+  $("#who").textContent = `${me.username} (${me.role})`;
+  $("#tabs").innerHTML = TABS[me.role].map((t, i) => `<button data-tab="${i}">${esc(t[0])}</button>`).join("");
+  showTab(0);
+}
+
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-tab]"); if (t) return showTab(+t.dataset.tab);
+  const a = e.target.closest("[data-act]"); if (a && ACTIONS[a.dataset.act]) ACTIONS[a.dataset.act](a);
+});
+document.addEventListener("submit", async e => {
+  const f = e.target.closest("form[data-post]"); if (!f) return;
+  e.preventDefault();
+  const btn = f.querySelector("button"); btn.disabled = true;
+  try {
+    const r = await api(f.dataset.post, { method: "POST", body: Object.fromEntries(new FormData(f)) });
+    await showTab(cur);
+    msg($("#out"), r.temp_password ? `Created. Temporary password (shown once): ${r.temp_password}` : "Saved.", true);
+  } catch (err) { msg($("#out"), "✖ " + why(err), false); btn.disabled = false; }
+});
+$("#login-form").addEventListener("submit", async e => {
+  e.preventDefault(); const f = new FormData(e.target);
+  try { await api("/login", { method: "POST", body: { username: f.get("username"), password: f.get("password") } }); me = await api("/me"); enter(); }
+  catch (err) { msg($("#login-msg"), why(err), false); }
+});
+$("#logout").onclick = async () => { try { await api("/logout", { method: "POST" }); } finally { location.reload(); } };
+window.addEventListener("beforeunload", stopCam);
+
+(async () => {
+  try { cfg = await api("/config"); } catch (e) { return msg($("#login-msg"), why(e), false); }
+  try { me = await api("/me"); enter(); } catch { /* not logged in: show the sign-in form */ }
+})();
+</script>
+</body>
+</html>
